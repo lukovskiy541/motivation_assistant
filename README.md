@@ -7,7 +7,7 @@
 ## Features
 
 - **AI Motivation:** Generates motivational messages using your notes and current screen context.
-- **Supports Local & Cloud AI:** Works with local Ollama (LLaVA) or Google Gemini.
+- **Supports Local & Cloud AI:** Works with local Ollama or Google Gemini.
 - **Obsidian Integration:** Analyzes your Obsidian vault for deeper context.
 - **System Tray App:** Easy access via Windows system tray icon.
 - **Autostart Option:** Can launch automatically with Windows.

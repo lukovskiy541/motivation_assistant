@@ -12,10 +12,10 @@ class Config:
     DEFAULT_EXCLUDED_DIRS = {".obsidian", "унік", "Навчання поза уніком", "Матеріальна частина"}
     
     # Ollama settings
-    OLLAMA_MODEL = "qwen3:latest"
-    OLLAMA_VISION_MODEL = "llava:latest"
+    OLLAMA_TEXT_MODEL = "gemma3:4b"
+    OLLAMA_VISION_MODEL = "gemma3:4b"
     OLLAMA_URL = "http://localhost:11434/api/generate"
-    OLLAMA_TIMEOUT = 120
+    OLLAMA_TIMEOUT = 180
     
     # Gemini settings
     GEMINI_MODEL = "gemini-2.5-flash-preview-05-20"

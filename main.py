@@ -4,12 +4,14 @@ import json
 import random
 import signal
 import ctypes
+import subprocess
 from typing import Dict, Any, Optional
 
 import win32com.client
 from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction
 from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import QTimer
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton, QButtonGroup, QMessageBox, QComboBox
 
 from source.assistant_core import AIAssistant
 
@@ -117,6 +119,7 @@ class MotivationAssistant:
         
         self.action_autostart: Optional[QAction] = None
         self.action_show: Optional[QAction] = None
+        self.action_change_provider: Optional[QAction] = None
         self.action_quit: Optional[QAction] = None
         
         self.settings = self.settings_manager.load_settings()
@@ -132,10 +135,145 @@ class MotivationAssistant:
         
         signal.signal(signal.SIGINT, self._signal_handler)
     
+    def prompt_for_ai_provider(self):
+        """Prompt user for Gemini API key or to use local model and models if local."""
+        from source import config  
+
+        def is_ollama_installed():
+            try:
+                subprocess.run(["ollama", "--version"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                return True
+            except Exception:
+                return False
+
+        def get_ollama_models():
+            try:
+                result = subprocess.run(["ollama", "list"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
+                models = []
+                for line in result.stdout.splitlines():
+                    if line and not line.startswith("NAME"):
+                        model_name = line.split()[0]
+                        models.append(model_name)
+                return models
+            except Exception:
+                return []
+
+        class ApiKeyDialog(QDialog):
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self.setWindowTitle("AI Provider Setup")
+                self.setModal(True)
+                self.api_key = None
+                self.use_local = False
+                self.vision_model = ""
+                self.text_model = ""
+
+                layout = QVBoxLayout(self)
+
+                self.label = QLabel("Choose AI provider:")
+                layout.addWidget(self.label)
+
+                self.radio_gemini = QRadioButton("Google Gemini (cloud)")
+                self.radio_local = QRadioButton("Local model (Ollama)")
+                self.radio_gemini.setChecked(True)
+                layout.addWidget(self.radio_gemini)
+                layout.addWidget(self.radio_local)
+
+                self.api_key_input = QLineEdit()
+                self.api_key_input.setPlaceholderText("Enter Gemini API key")
+                layout.addWidget(self.api_key_input)
+
+                # Vision/Text model selection for Ollama
+                self.vision_label = QLabel("Ollama Vision Model:")
+                self.vision_combo = QComboBox()
+                self.text_label = QLabel("Ollama Text Model:")
+                self.text_combo = QComboBox()
+
+                # Only show model selection if Ollama is installed
+                self.ollama_installed = is_ollama_installed()
+                if self.ollama_installed:
+                    models = get_ollama_models()
+                    self.vision_combo.addItems(models)
+                    self.text_combo.addItems(models)
+                else:
+                    self.vision_combo.addItem("Ollama not found")
+                    self.text_combo.addItem("Ollama not found")
+
+                layout.addWidget(self.vision_label)
+                layout.addWidget(self.vision_combo)
+                layout.addWidget(self.text_label)
+                layout.addWidget(self.text_combo)
+
+                # Show/hide fields based on selection
+                def update_fields():
+                    is_gemini = self.radio_gemini.isChecked()
+                    self.api_key_input.setEnabled(is_gemini)
+                    self.vision_label.setVisible(not is_gemini)
+                    self.vision_combo.setVisible(not is_gemini)
+                    self.text_label.setVisible(not is_gemini)
+                    self.text_combo.setVisible(not is_gemini)
+
+                self.radio_gemini.toggled.connect(update_fields)
+                self.radio_local.toggled.connect(update_fields)
+                update_fields()
+
+                self.button_ok = QPushButton("OK")
+                self.button_ok.clicked.connect(self.accept)
+                layout.addWidget(self.button_ok)
+
+            def accept(self):
+                if self.radio_gemini.isChecked():
+                    key = self.api_key_input.text().strip()
+                    if not key:
+                        QMessageBox.warning(self, "Input required", "Please enter your Gemini API key.")
+                        return
+                    self.api_key = key
+                    self.use_local = False
+                    self.vision_model = ""
+                    self.text_model = ""
+                else:
+                    if not self.ollama_installed:
+                        QMessageBox.warning(self, "Ollama not found", "Ollama is not installed or not in PATH.")
+                        return
+                    vision = self.vision_combo.currentText().strip()
+                    text = self.text_combo.currentText().strip()
+                    if not vision or not text or vision == "Ollama not found" or text == "Ollama not found":
+                        QMessageBox.warning(self, "Input required", "Please select both Ollama models.")
+                        return
+                    self.api_key = None
+                    self.use_local = True
+                    self.vision_model = vision
+                    self.text_model = text
+                super().accept()
+
+        dialog = ApiKeyDialog()
+        if dialog.exec_() == QDialog.Accepted:
+            self.settings["gemini_api_key"] = dialog.api_key
+            self.settings["use_local_model"] = dialog.use_local
+            self.settings["ollama_vision_model"] = dialog.vision_model
+            self.settings["ollama_text_model"] = dialog.text_model
+            self.settings_manager.save_settings(self.settings)
+
+            # Update config.py variables at runtime
+            if dialog.use_local:
+                config.OLLAMA_VISION_MODEL = dialog.vision_model
+                config.OLLAMA_TEXT_MODEL = dialog.text_model
+            else:
+                config.OLLAMA_VISION_MODEL = "llava:latest"
+                config.OLLAMA_TEXT_MODEL = "qwen:latest"
+        else:
+            sys.exit(0)  # User cancelled
+
     def setup_ai_assistant(self) -> None:
         """Initialize the AI assistant."""
+        # Prompt for API key or local model if not set
+        if not self.settings.get("gemini_api_key") and not self.settings.get("use_local_model"):
+            self.prompt_for_ai_provider()
         try:
-            self.ai = AIAssistant()
+            self.ai = AIAssistant(
+                gemini_api_key=self.settings.get("gemini_api_key"),
+                use_local_ai=self.settings.get("use_local_model", False)  
+            )
         except Exception as e:
             print(f"Error initializing AI assistant: {e}")
             sys.exit(1)
@@ -156,6 +294,7 @@ class MotivationAssistant:
         self.menu = QMenu()
         
         self.action_show = QAction("Get quote")
+        self.action_change_provider = QAction("Change AI provider")  
         self.action_autostart = QAction("Launch on startup")
         self.action_quit = QAction("Quit")
         
@@ -163,13 +302,26 @@ class MotivationAssistant:
         self.action_autostart.setChecked(self.settings.get("autostart", False))
         
         self.action_show.triggered.connect(self.show_message)
+        self.action_change_provider.triggered.connect(self.change_ai_provider)  # CONNECT ACTION
         self.action_autostart.triggered.connect(self._toggle_autostart)
         self.action_quit.triggered.connect(self.quit_application)
         
         self.menu.addAction(self.action_show)
+        self.menu.addAction(self.action_change_provider)  # ADD TO MENU
         self.menu.addAction(self.action_autostart)
         self.menu.addAction(self.action_quit)
     
+    def change_ai_provider(self):
+        """Show dialog to change AI provider and re-initialize assistant."""
+        self.prompt_for_ai_provider()
+        try:
+            self.ai = AIAssistant(
+                gemini_api_key=self.settings.get("gemini_api_key"),
+                use_local_ai=self.settings.get("use_local_model", False)
+            )
+        except Exception as e:
+            QMessageBox.critical(None, "Error", f"Failed to change AI provider: {e}")
+
     def setup_timer(self) -> None:
         """Setup the main application timer."""
         self.timer = QTimer()
@@ -203,6 +355,8 @@ class MotivationAssistant:
                 )
             except Exception as e:
                 print(f"Error showing AI message: {e}")
+
+    
     
     def _toggle_autostart(self) -> None:
         """Toggle autostart setting."""

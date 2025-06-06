@@ -34,7 +34,7 @@ class OllamaProvider(AIProvider):
     def __init__(self):
         self.base_url = Config.OLLAMA_URL
         self.timeout = Config.OLLAMA_TIMEOUT
-        self.text_model = Config.OLLAMA_MODEL
+        self.text_model = Config.OLLAMA_TEXT_MODEL
         self.vision_model = Config.OLLAMA_VISION_MODEL
     
     def generate_quote(self, context: str, screenshot_description: str) -> str:
@@ -107,11 +107,12 @@ class OllamaProvider(AIProvider):
 class GeminiProvider(AIProvider):
     """Google Gemini AI provider."""
     
-    def __init__(self):
+    def __init__(self, api_key=None):
         load_dotenv()
-        api_key = os.getenv('GEMINI_API_KEY')
+        if api_key is None:
+            api_key = os.getenv('GEMINI_API_KEY')
         if not api_key:
-            raise ValueError("GEMINI_API_KEY not found in environment variables")
+            raise ValueError("GEMINI_API_KEY not found in environment variables or not provided")
         
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(Config.GEMINI_MODEL)

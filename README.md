@@ -19,7 +19,7 @@
 
 1. **Clone the repository:**
     ```bash
-    git clone https://github.com/yourusername/motivation_assistant.git
+    git clone https://github.com/lukovskiy541/motivation_assistant
     cd motivation_assistant
     ```
 

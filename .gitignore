@@ -1,0 +1,9 @@
+/.env
+/.venv
+/context_snapshot.txt
+/temp_screenshot.png
+/__pycache__
+/dist
+dist/frontend
+build
+
